@@ -8,6 +8,11 @@
 import SwiftUI
 
 struct ContentView: View {
+    // MARK: - 定数
+
+    /// iPad で広がりすぎないように内容の最大幅を制限する (pt)
+    private let contentMaxWidth: CGFloat = 600
+
     // MARK: - 状態
 
     @State private var deviceInfo: DeviceInformation?
@@ -23,8 +28,11 @@ struct ContentView: View {
             Text("CCAPI 接続テスト")
                 .font(.title2)
                 .bold()
+                .frame(maxWidth: .infinity, alignment: .leading)
 
             deviceInfoSection
+
+            Spacer(minLength: 0)
 
             Button {
                 Task { await loadDeviceInfo() }
@@ -42,6 +50,8 @@ struct ContentView: View {
             .disabled(isLoading)
         }
         .padding()
+        .frame(maxWidth: contentMaxWidth)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
     }
 
     // MARK: - サブビュー
@@ -65,21 +75,26 @@ struct ContentView: View {
             Text(message)
                 .foregroundStyle(.red)
                 .frame(maxWidth: .infinity, alignment: .leading)
+                .padding()
+                .background(.red.opacity(0.1))
+                .clipShape(RoundedRectangle(cornerRadius: 12))
         } else {
             Text("ボタンを押すとカメラからデバイス情報を取得します")
                 .foregroundStyle(.secondary)
                 .frame(maxWidth: .infinity, alignment: .leading)
+                .padding()
         }
     }
 
     private func row(_ label: String, _ value: String) -> some View {
-        HStack(alignment: .firstTextBaseline) {
+        HStack(alignment: .firstTextBaseline, spacing: 12) {
             Text(label)
                 .foregroundStyle(.secondary)
                 .frame(width: 120, alignment: .leading)
             Text(value)
                 .font(.body.monospaced())
                 .textSelection(.enabled)
+                .frame(maxWidth: .infinity, alignment: .leading)
         }
     }
 
@@ -98,6 +113,10 @@ struct ContentView: View {
     }
 }
 
-#Preview {
+#Preview("iPad Pro 11-inch") {
+    ContentView()
+}
+
+#Preview("iPhone 17") {
     ContentView()
 }
