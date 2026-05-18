@@ -1,0 +1,21 @@
+# macOS
+.DS_Store
+
+# Xcode
+xcuserdata/
+*.xcodeproj/project.xcworkspace/
+*.xcodeproj/xcuserdata/
+*.xcworkspace/xcuserdata/
+DerivedData/
+build/
+
+# Swift Package Manager
+.swiftpm/
+Package.resolved
+.build/
+
+# Claude Code
+.claude/
+
+# Local context (not for version control)
+PROJECT_CONTEXT.md
