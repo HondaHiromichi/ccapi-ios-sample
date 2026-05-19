@@ -4,18 +4,14 @@ import UIKit
 
 // MARK: - サムネイルローダー
 
-/// CCAPI からサムネイル画像を取得し、メモリキャッシュとリトライを管理する。
+/// CCAPI からサムネイル画像を取得し、メモリキャッシュを管理する。
 ///
-/// シリアル化は行わず、URLSession の接続プール (`httpMaximumConnectionsPerHost = 6`) に
-/// 並列度の調整を委ねる。失敗したフェッチは最大 3 回までリトライ (500ms バックオフ) する。
+/// 並列度は URLSession の接続プール (`CCAPIClient` 側で `httpMaximumConnectionsPerHost = 6`) に
+/// 委ねる方針。リトライは行わず、失敗時は上位 (`ThumbnailCell`) が失敗状態を表示し、ユーザー
+/// 操作 (リロードボタン) で再試行する。
 ///
-/// 取得済みサムネイルは `NSCache` でメモリ保持し、スクロール往復時の再取得を防ぐ。
+/// 取得済みサムネイルは `NSCache` でメモリ保持し、スクロール往復・リロード時の再取得を防ぐ。
 actor ThumbnailLoader {
-    // MARK: - 定数
-
-    private let maxRetryAttempts = 3
-    private let retryBackoffMilliseconds: UInt64 = 500
-
     // MARK: - フィールド
 
     private let cache = NSCache<NSString, UIImage>()
@@ -36,55 +32,19 @@ actor ThumbnailLoader {
             return cached
         }
 
-        let image = try await fetchWithRetry(
-            client: client,
-            storage: storage,
-            directory: directory,
-            file: file,
-            attemptsLeft: maxRetryAttempts
+        let data = try await client.fetchData(
+            .fileContent(
+                storage: storage,
+                directory: directory,
+                file: file,
+                kind: .thumbnail
+            )
         )
+        guard let image = UIImage(data: data) else {
+            throw CCAPIError.decoding(ThumbnailDecodeError())
+        }
         cache.setObject(image, forKey: nsKey)
         return image
-    }
-
-    // MARK: - Private メソッド (リトライ付きフェッチ)
-
-    private func fetchWithRetry(
-        client: CCAPIClient,
-        storage: String,
-        directory: String,
-        file: String,
-        attemptsLeft: Int
-    ) async throws -> UIImage {
-        do {
-            let data = try await client.fetchData(
-                .fileContent(
-                    storage: storage,
-                    directory: directory,
-                    file: file,
-                    kind: .thumbnail
-                )
-            )
-            guard let image = UIImage(data: data) else {
-                throw CCAPIError.decoding(ThumbnailDecodeError())
-            }
-            return image
-        } catch is CancellationError {
-            // 呼び出し側のキャンセルは伝播させる (リトライしない)
-            throw CancellationError()
-        } catch {
-            if attemptsLeft > 1 {
-                try? await Task.sleep(nanoseconds: retryBackoffMilliseconds * 1_000_000)
-                return try await fetchWithRetry(
-                    client: client,
-                    storage: storage,
-                    directory: directory,
-                    file: file,
-                    attemptsLeft: attemptsLeft - 1
-                )
-            }
-            throw error
-        }
     }
 
     // MARK: - エラー型
