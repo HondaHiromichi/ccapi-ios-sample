@@ -13,12 +13,10 @@ struct ContentView: View {
     /// iPad で広がりすぎないように内容の最大幅を制限する (pt)
     private let contentMaxWidth: CGFloat = 600
 
-    /// コンテンツカードで表示するファイル名のサンプル件数
-    private let sampleFileCount = 3
-
     // MARK: - 状態
 
     @Environment(AppSettings.self) private var settings
+    @Environment(\.ccapiClient) private var client
 
     @State private var deviceInfo: DeviceInformation?
     @State private var batteryStatus: BatteryStatus?
@@ -172,29 +170,31 @@ struct ContentView: View {
                 ForEach(directoryListings) { listing in
                     Divider().padding(.vertical, 4)
 
-                    VStack(alignment: .leading, spacing: 6) {
+                    NavigationLink {
+                        ThumbnailGridView(
+                            storage: "sd",
+                            directory: listing.name,
+                            fileURLs: listing.fileURLs
+                        )
+                    } label: {
                         HStack(alignment: .firstTextBaseline) {
-                            Text("📁 \(listing.name)")
-                                .font(.body.bold())
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text("📁 \(listing.name)")
+                                    .font(.body.bold())
+                                    .foregroundStyle(.primary)
+                                Text("\(listing.fileURLs.count) ファイル")
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                            }
                             Spacer()
-                            Text("\(listing.fileURLs.count) ファイル")
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                        }
-
-                        ForEach(listing.fileNames.prefix(sampleFileCount), id: \.self) { name in
-                            Text("• \(name)")
-                                .font(.caption.monospaced())
-                                .foregroundStyle(.secondary)
-                                .frame(maxWidth: .infinity, alignment: .leading)
-                        }
-
-                        if listing.fileURLs.count > sampleFileCount {
-                            Text("... 他 \(listing.fileURLs.count - sampleFileCount) 件")
-                                .font(.caption)
+                            Image(systemName: "chevron.right")
+                                .font(.caption.bold())
                                 .foregroundStyle(.tertiary)
                         }
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .contentShape(Rectangle())
                     }
+                    .buttonStyle(.plain)
                 }
             }
         }
@@ -304,7 +304,6 @@ struct ContentView: View {
     private func loadAllStatus() async {
         isLoading = true
         errorMessage = nil
-        let client = CCAPIClient(settings: settings)
 
         do {
             deviceInfo = try await client.fetch(.deviceInformation)

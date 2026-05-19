@@ -33,6 +33,15 @@ enum CCAPIEndpoint {
         page: Int? = nil
     )
 
+    /// 個別ファイルの取得 (本体・サムネイル・表示用・情報など)
+    /// 例: `GET /ccapi/ver100/contents/sd/100__TSB/IMG_0001.JPG?kind=thumbnail`
+    case fileContent(
+        storage: String,
+        directory: String,
+        file: String,
+        kind: ContentKind? = nil
+    )
+
     case eventPolling(continueWait: Bool)
 
     // MARK: - Path 構築
@@ -62,6 +71,12 @@ enum CCAPIEndpoint {
             var components = URLComponents()
             components.queryItems = query
             return base + (components.percentEncodedQuery.map { "?\($0)" } ?? "")
+        case .fileContent(let storage, let directory, let file, let kind):
+            let base = "/ccapi/\(CCAPIVersion.v100.rawValue)/contents/\(storage)/\(directory)/\(file)"
+            if let kind {
+                return "\(base)?kind=\(kind.rawValue)"
+            }
+            return base
         case .eventPolling(let continueWait):
             let flag = continueWait ? "on" : "off"
             return "/ccapi/\(CCAPIVersion.v100.rawValue)/event/polling?continue=\(flag)"
@@ -79,5 +94,19 @@ enum CCAPIEndpoint {
         case wav
         case mp4
         case mov
+    }
+
+    /// `fileContent` の kind クエリ値
+    enum ContentKind: String {
+        /// 本体データ (デフォルト)
+        case main
+        /// サムネイル画像
+        case thumbnail
+        /// 表示用画像
+        case display
+        /// 埋め込み画像 (RAW のみ)
+        case embedded
+        /// ファイル情報 (JSON)
+        case info
     }
 }

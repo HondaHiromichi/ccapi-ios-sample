@@ -12,7 +12,21 @@ struct ccapi_ios_sampleApp: App {
     // MARK: - 状態
 
     /// アプリ全体で共有する設定 (CCAPI 接続先など)
-    @State private var settings = AppSettings()
+    @State private var settings: AppSettings
+
+    /// アプリ全体で共有する CCAPI クライアント (内部の URLSession もアプリ内 1 つに集約)
+    private let client: CCAPIClient
+
+    /// サムネイル取得をシリアル化・キャッシュする共有ローダー
+    private let thumbnailLoader = ThumbnailLoader()
+
+    // MARK: - 初期化
+
+    init() {
+        let settings = AppSettings()
+        _settings = State(initialValue: settings)
+        self.client = CCAPIClient(settings: settings)
+    }
 
     // MARK: - シーン
 
@@ -20,6 +34,8 @@ struct ccapi_ios_sampleApp: App {
         WindowGroup {
             ContentView()
                 .environment(settings)
+                .environment(\.ccapiClient, client)
+                .environment(\.thumbnailLoader, thumbnailLoader)
         }
     }
 }
