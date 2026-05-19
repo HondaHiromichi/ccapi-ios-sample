@@ -13,6 +13,9 @@ struct ContentView: View {
     /// iPad で広がりすぎないように内容の最大幅を制限する (pt)
     private let contentMaxWidth: CGFloat = 600
 
+    /// コンテンツカードで表示するファイル名のサンプル件数
+    private let sampleFileCount = 3
+
     // MARK: - 状態
 
     @Environment(AppSettings.self) private var settings
@@ -20,8 +23,22 @@ struct ContentView: View {
     @State private var deviceInfo: DeviceInformation?
     @State private var batteryStatus: BatteryStatus?
     @State private var storageStatus: StorageStatus?
+    @State private var directoryListings: [DirectoryListing] = []
     @State private var errorMessage: String?
     @State private var isLoading = false
+
+    // MARK: - 内部型
+
+    /// 1 フォルダ分の取得結果
+    private struct DirectoryListing: Identifiable {
+        let id = UUID()
+        let name: String
+        let fileURLs: [String]
+
+        var fileNames: [String] {
+            fileURLs.compactMap { URL(string: $0)?.lastPathComponent }
+        }
+    }
 
     // MARK: - 本体
 
@@ -38,6 +55,7 @@ struct ContentView: View {
                     deviceInfoCard
                     batteryCard
                     storageCard
+                    contentsCard
 
                     Spacer(minLength: 0)
 
@@ -84,12 +102,16 @@ struct ContentView: View {
                 .padding()
                 .background(.red.opacity(0.1))
                 .clipShape(RoundedRectangle(cornerRadius: 12))
-        } else if deviceInfo == nil && batteryStatus == nil && storageStatus == nil {
-            Text("ボタンを押すとカメラからデバイス情報・バッテリ・ストレージを取得します")
+        } else if !hasAnyData {
+            Text("ボタンを押すとカメラから各種情報を取得します")
                 .foregroundStyle(.secondary)
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding()
         }
+    }
+
+    private var hasAnyData: Bool {
+        deviceInfo != nil || batteryStatus != nil || storageStatus != nil || !directoryListings.isEmpty
     }
 
     // MARK: - サブビュー (デバイス情報カード)
@@ -134,6 +156,45 @@ struct ContentView: View {
                     row("空き容量", "\(formatBytes(item.spaceSize)) (\(spacePercent(item))%)")
                     row("撮影枚数", "\(item.contentsNumber) 枚")
                     row("アクセス権", item.accessCapability)
+                }
+            }
+        }
+    }
+
+    // MARK: - サブビュー (コンテンツカード)
+
+    @ViewBuilder
+    private var contentsCard: some View {
+        if !directoryListings.isEmpty {
+            card(title: "コンテンツ (JPEG)") {
+                row("フォルダ数", "\(directoryListings.count)")
+
+                ForEach(directoryListings) { listing in
+                    Divider().padding(.vertical, 4)
+
+                    VStack(alignment: .leading, spacing: 6) {
+                        HStack(alignment: .firstTextBaseline) {
+                            Text("📁 \(listing.name)")
+                                .font(.body.bold())
+                            Spacer()
+                            Text("\(listing.fileURLs.count) ファイル")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+
+                        ForEach(listing.fileNames.prefix(sampleFileCount), id: \.self) { name in
+                            Text("• \(name)")
+                                .font(.caption.monospaced())
+                                .foregroundStyle(.secondary)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                        }
+
+                        if listing.fileURLs.count > sampleFileCount {
+                            Text("... 他 \(listing.fileURLs.count - sampleFileCount) 件")
+                                .font(.caption)
+                                .foregroundStyle(.tertiary)
+                        }
+                    }
                 }
             }
         }
@@ -244,17 +305,45 @@ struct ContentView: View {
         isLoading = true
         errorMessage = nil
         let client = CCAPIClient(settings: settings)
+
         do {
             deviceInfo = try await client.fetch(.deviceInformation)
             batteryStatus = try await client.fetch(.batteryStatus)
             storageStatus = try await client.fetch(.storageStatus)
+
+            // ストレージ配下のディレクトリ一覧
+            let storageContent: ContentURLList = try await client.fetch(
+                .storageContents(storage: "sd")
+            )
+            let directoryNames = storageContent.lastPathComponents
+
+            // 各ディレクトリの JPEG ファイル一覧を順次取得
+            var listings: [DirectoryListing] = []
+            for directory in directoryNames {
+                let files: ContentURLList = try await client.fetch(
+                    .directoryContents(
+                        storage: "sd",
+                        directory: directory,
+                        type: .jpeg,
+                        page: nil
+                    )
+                )
+                listings.append(DirectoryListing(name: directory, fileURLs: files.url))
+            }
+            directoryListings = listings
         } catch {
-            deviceInfo = nil
-            batteryStatus = nil
-            storageStatus = nil
+            resetAllData()
             errorMessage = error.localizedDescription
         }
+
         isLoading = false
+    }
+
+    private func resetAllData() {
+        deviceInfo = nil
+        batteryStatus = nil
+        storageStatus = nil
+        directoryListings = []
     }
 }
 
