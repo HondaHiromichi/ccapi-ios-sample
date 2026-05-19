@@ -97,6 +97,45 @@ CCAPI Activation Tool は macOS 版が Canon Developer Community から配布さ
 - CCAPI リリースノート (Canon Asia): https://asia.canon/en/campaign/developerresources/camera/cap/camera-control-api-release-note
 - R100 マニュアル (Wi-Fi/Bluetooth): https://cam.start.canon/en/C015/manual/html/UG-08_Wi-Fi_0030.html
 
+## FAQ
+
+### Q. 他の Canon カメラでも動作しますか?
+
+CCAPI 対応機種であれば基本的なエンドポイント (`/deviceinformation` 等) は動作する見込みです。ただし `/contents` のサブパスは機種・ファームウェアにより API バージョンの対応状況が異なります。本実装は R100 で実機検証した結果に基づき ver100 パス前提となっており、R5・R3 等の上位機種では ver110 / ver130 のネイティブパスへの調整が必要になる場合があります。汎用化するには起動時に `GET /ccapi/` を叩いて利用可能エンドポイント一覧を取得し、動的にバージョン選択するのが本来の作法です。
+
+### Q. Sony / Nikon / Fujifilm 等の他社カメラでも動きますか?
+
+動きません。CCAPI は Canon 専用 API です。各メーカーは独自のプロトコルを持ちます:
+
+- Sony: Camera Remote SDK / Imaging Edge
+- Nikon: SnapBridge / NX MobileAir
+- Fujifilm: Cam Remote API / X Acquire
+- OM System: OI.Share API
+- Panasonic: LUMIX Sync
+
+エンドポイント・認証・データ構造のいずれも別物のため、本実装をそのまま流用することはできません。
+
+### Q. AP モードとインフラモードのどちらを使うべきですか?
+
+用途次第です:
+
+- **AP モード**: カメラと iPad を直接接続。最大スループット・最小遅延、外部ネットワーク混線の影響なし。ただし iPad のインターネット接続が切れる (cellular 対応 iPad なら回線併用で回避可能)
+- **インフラモード (ルーター経由)**: カメラと iPad を同じ Wi-Fi ルーターに参加させる。Wi-Fi 切り替え不要・インターネット併用可。ただしルーター経由のホップによる若干の性能低下と、会場 Wi-Fi 混線時の影響を受ける可能性あり
+
+本アプリは設定画面で IP/ポートを切り替え可能なので、シーンに応じて使い分けられます。
+
+### Q. なぜバッテリの残量が「(AC 駆動中)」と表示されるのですか?
+
+R100 に AC アダプタ (DR-E17 等) を接続している間、CCAPI のバッテリ API は `level` と `quality` を空文字で返す仕様です (Canon 側の挙動)。バッテリ (LP-E17) で駆動すれば、残量「残量フル」「残量多」等と表示されます。
+
+### Q. iOS の ATS で HTTP 通信が遮断されないのですか?
+
+`Info.plist` で `NSAppTransportSecurity > NSAllowsLocalNetworking = true` を設定し、ローカルネットワーク (192.168.x.x 等のプライベート IP) への HTTP 通信を許可しています。CCAPI は HTTPS をサポートしていないため、この設定が必須です。
+
+### Q. CCAPI のアクティベーションは何回必要ですか?
+
+カメラ 1 台につき 1 回のみです。一度有効化すれば、ファームウェア更新後も再有効化は不要です。複数台所有している場合は各カメラに対して個別に実施する必要があります。
+
 ## ライセンス
 
 個人の試験的リポジトリ。ライセンスは未定。
