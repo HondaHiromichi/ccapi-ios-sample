@@ -18,6 +18,8 @@ struct ContentView: View {
     @Environment(AppSettings.self) private var settings
 
     @State private var deviceInfo: DeviceInformation?
+    @State private var batteryStatus: BatteryStatus?
+    @State private var storageStatus: StorageStatus?
     @State private var errorMessage: String?
     @State private var isLoading = false
 
@@ -25,34 +27,39 @@ struct ContentView: View {
 
     var body: some View {
         NavigationStack {
-            VStack(spacing: 24) {
-                Text("CCAPI 接続テスト")
-                    .font(.title2)
-                    .bold()
-                    .frame(maxWidth: .infinity, alignment: .leading)
+            ScrollView {
+                VStack(spacing: 16) {
+                    Text("CCAPI 接続テスト")
+                        .font(.title2)
+                        .bold()
+                        .frame(maxWidth: .infinity, alignment: .leading)
 
-                deviceInfoSection
+                    placeholderOrError
+                    deviceInfoCard
+                    batteryCard
+                    storageCard
 
-                Spacer(minLength: 0)
+                    Spacer(minLength: 0)
 
-                Button {
-                    Task { await loadDeviceInfo() }
-                } label: {
-                    if isLoading {
-                        ProgressView()
-                            .frame(maxWidth: .infinity)
-                    } else {
-                        Text("デバイス情報を取得")
-                            .frame(maxWidth: .infinity)
+                    Button {
+                        Task { await loadAllStatus() }
+                    } label: {
+                        if isLoading {
+                            ProgressView()
+                                .frame(maxWidth: .infinity)
+                        } else {
+                            Text("カメラ情報を取得")
+                                .frame(maxWidth: .infinity)
+                        }
                     }
+                    .buttonStyle(.borderedProminent)
+                    .controlSize(.large)
+                    .disabled(isLoading)
                 }
-                .buttonStyle(.borderedProminent)
-                .controlSize(.large)
-                .disabled(isLoading)
+                .padding()
+                .frame(maxWidth: contentMaxWidth)
+                .frame(maxWidth: .infinity, alignment: .top)
             }
-            .padding()
-            .frame(maxWidth: contentMaxWidth)
-            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
                     NavigationLink {
@@ -66,12 +73,31 @@ struct ContentView: View {
         }
     }
 
-    // MARK: - サブビュー
+    // MARK: - サブビュー (プレースホルダ / エラー)
 
     @ViewBuilder
-    private var deviceInfoSection: some View {
+    private var placeholderOrError: some View {
+        if let message = errorMessage {
+            Text(message)
+                .foregroundStyle(.red)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding()
+                .background(.red.opacity(0.1))
+                .clipShape(RoundedRectangle(cornerRadius: 12))
+        } else if deviceInfo == nil && batteryStatus == nil && storageStatus == nil {
+            Text("ボタンを押すとカメラからデバイス情報・バッテリ・ストレージを取得します")
+                .foregroundStyle(.secondary)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding()
+        }
+    }
+
+    // MARK: - サブビュー (デバイス情報カード)
+
+    @ViewBuilder
+    private var deviceInfoCard: some View {
         if let info = deviceInfo {
-            VStack(alignment: .leading, spacing: 8) {
+            card(title: "デバイス情報") {
                 row("メーカー", info.manufacturer)
                 row("製品名", info.productName)
                 row("ファームウェア", info.firmwareVersion)
@@ -79,23 +105,54 @@ struct ContentView: View {
                 row("MAC アドレス", info.macAddress)
                 row("GUID", info.guid)
             }
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .padding()
-            .background(.gray.opacity(0.1))
-            .clipShape(RoundedRectangle(cornerRadius: 12))
-        } else if let message = errorMessage {
-            Text(message)
-                .foregroundStyle(.red)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .padding()
-                .background(.red.opacity(0.1))
-                .clipShape(RoundedRectangle(cornerRadius: 12))
-        } else {
-            Text("ボタンを押すとカメラからデバイス情報を取得します")
-                .foregroundStyle(.secondary)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .padding()
         }
+    }
+
+    // MARK: - サブビュー (バッテリカード)
+
+    @ViewBuilder
+    private var batteryCard: some View {
+        if let battery = batteryStatus {
+            card(title: "バッテリ") {
+                row("種別", batteryKindLabel(battery.kind))
+                row("名称", battery.name)
+                row("残量", batteryLevelLabel(battery))
+                row("品質", batteryQualityLabel(battery))
+            }
+        }
+    }
+
+    // MARK: - サブビュー (ストレージカード)
+
+    @ViewBuilder
+    private var storageCard: some View {
+        if let storage = storageStatus {
+            card(title: "ストレージ") {
+                ForEach(Array(storage.storageList.enumerated()), id: \.offset) { _, item in
+                    row("名称", item.name)
+                    row("総容量", formatBytes(item.maxSize))
+                    row("空き容量", "\(formatBytes(item.spaceSize)) (\(spacePercent(item))%)")
+                    row("撮影枚数", "\(item.contentsNumber) 枚")
+                    row("アクセス権", item.accessCapability)
+                }
+            }
+        }
+    }
+
+    // MARK: - 汎用カードビルダー
+
+    private func card<Content: View>(title: String, @ViewBuilder content: () -> Content) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text(title)
+                .font(.headline)
+                .foregroundStyle(.secondary)
+                .padding(.bottom, 4)
+            content()
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding()
+        .background(.gray.opacity(0.1))
+        .clipShape(RoundedRectangle(cornerRadius: 12))
     }
 
     private func row(_ label: String, _ value: String) -> some View {
@@ -110,16 +167,91 @@ struct ContentView: View {
         }
     }
 
+    // MARK: - フォーマッタ
+
+    private func batteryKindLabel(_ kind: String) -> String {
+        switch kind {
+        case "battery": return "バッテリー"
+        case "ac_adapter": return "AC アダプタ"
+        case "dc_coupler": return "DC カプラ"
+        case "batterygrip": return "バッテリーグリップ"
+        case "not_inserted": return "未挿入"
+        case "unknown": return "非認証電池"
+        default: return kind
+        }
+    }
+
+    /// バッテリ残量を日本語に変換。空文字の場合は給電源 (AC アダプタ等) を示す文言を返す
+    private func batteryLevelLabel(_ battery: BatteryStatus) -> String {
+        if battery.level.isEmpty {
+            return nonBatteryStateText(for: battery.kind)
+        }
+        switch battery.level {
+        case "low": return "空手前"
+        case "quarter": return "残量少"
+        case "half": return "残量中"
+        case "high": return "残量多"
+        case "full": return "残量フル"
+        case "unknown": return "非認証電池"
+        case "charge": return "充電中"
+        case "chargestop": return "充電停止"
+        case "chargecomp": return "充電完了"
+        default: return battery.level
+        }
+    }
+
+    /// バッテリ品質を日本語に変換。空文字の場合は給電源を示す文言を返す
+    private func batteryQualityLabel(_ battery: BatteryStatus) -> String {
+        if battery.quality.isEmpty {
+            return nonBatteryStateText(for: battery.kind)
+        }
+        switch battery.quality {
+        case "bad": return "劣化大 (要交換)"
+        case "normal": return "劣化小"
+        case "good": return "正常"
+        case "unknown": return "非認証電池"
+        default: return battery.quality
+        }
+    }
+
+    /// 残量・品質が取得できない場合の補足テキスト (給電源別)
+    private func nonBatteryStateText(for kind: String) -> String {
+        switch kind {
+        case "ac_adapter": return "(AC 駆動中)"
+        case "dc_coupler": return "(DC カプラ駆動中)"
+        case "batterygrip": return "(バッテリーグリップ使用中)"
+        case "not_inserted": return "(電池未挿入)"
+        default: return "—"
+        }
+    }
+
+    private func formatBytes(_ bytes: Int64) -> String {
+        let formatter = ByteCountFormatter()
+        formatter.allowedUnits = [.useGB, .useMB]
+        formatter.countStyle = .file
+        return formatter.string(fromByteCount: bytes)
+    }
+
+    private func spacePercent(_ storage: StorageStatus.Storage) -> Int {
+        guard storage.maxSize > 0 else { return 0 }
+        let ratio = Double(storage.spaceSize) / Double(storage.maxSize) * 100
+        return Int(ratio.rounded())
+    }
+
     // MARK: - Private メソッド
 
-    private func loadDeviceInfo() async {
+    private func loadAllStatus() async {
         isLoading = true
         errorMessage = nil
         let client = CCAPIClient(settings: settings)
         do {
             deviceInfo = try await client.fetch(.deviceInformation)
+            batteryStatus = try await client.fetch(.batteryStatus)
+            storageStatus = try await client.fetch(.storageStatus)
         } catch {
             deviceInfo = nil
+            batteryStatus = nil
+            storageStatus = nil
             errorMessage = error.localizedDescription
         }
         isLoading = false
