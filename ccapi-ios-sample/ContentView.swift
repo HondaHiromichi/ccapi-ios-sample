@@ -15,43 +15,45 @@ struct ContentView: View {
 
     // MARK: - 状態
 
+    @Environment(AppSettings.self) private var settings
+
     @State private var deviceInfo: DeviceInformation?
     @State private var errorMessage: String?
     @State private var isLoading = false
 
-    private let client = CCAPIClient()
-
     // MARK: - 本体
 
     var body: some View {
-        VStack(spacing: 24) {
-            Text("CCAPI 接続テスト")
-                .font(.title2)
-                .bold()
-                .frame(maxWidth: .infinity, alignment: .leading)
+        NavigationStack {
+            VStack(spacing: 24) {
+                Text("CCAPI 接続テスト")
+                    .font(.title2)
+                    .bold()
+                    .frame(maxWidth: .infinity, alignment: .leading)
 
-            deviceInfoSection
+                deviceInfoSection
 
-            Spacer(minLength: 0)
+                Spacer(minLength: 0)
 
-            Button {
-                Task { await loadDeviceInfo() }
-            } label: {
-                if isLoading {
-                    ProgressView()
-                        .frame(maxWidth: .infinity)
-                } else {
-                    Text("デバイス情報を取得")
-                        .frame(maxWidth: .infinity)
+                Button {
+                    Task { await loadDeviceInfo() }
+                } label: {
+                    if isLoading {
+                        ProgressView()
+                            .frame(maxWidth: .infinity)
+                    } else {
+                        Text("デバイス情報を取得")
+                            .frame(maxWidth: .infinity)
+                    }
                 }
+                .buttonStyle(.borderedProminent)
+                .controlSize(.large)
+                .disabled(isLoading)
             }
-            .buttonStyle(.borderedProminent)
-            .controlSize(.large)
-            .disabled(isLoading)
+            .padding()
+            .frame(maxWidth: contentMaxWidth)
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         }
-        .padding()
-        .frame(maxWidth: contentMaxWidth)
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
     }
 
     // MARK: - サブビュー
@@ -103,6 +105,7 @@ struct ContentView: View {
     private func loadDeviceInfo() async {
         isLoading = true
         errorMessage = nil
+        let client = CCAPIClient(settings: settings)
         do {
             deviceInfo = try await client.fetch(.deviceInformation)
         } catch {
@@ -115,8 +118,10 @@ struct ContentView: View {
 
 #Preview("iPad Pro 11-inch") {
     ContentView()
+        .environment(AppSettings())
 }
 
 #Preview("iPhone 17") {
     ContentView()
+        .environment(AppSettings())
 }

@@ -2,22 +2,17 @@ import Foundation
 
 // MARK: - CCAPI クライアント
 
-/// CCAPI を叩く URLSession ラッパー。認証なし、ベース URL 固定で動作する
+/// CCAPI を叩く URLSession ラッパー。接続先は `AppSettings` から動的に取得する (認証なし)
 final class CCAPIClient {
-    // MARK: - 定数
-
-    /// カメラアクセスポイントモードでの R100 の固定 IP/ポート (Phase 1 実機検証で確認)
-    static let defaultBaseURL = URL(string: "http://192.168.1.2:8080")!
-
     // MARK: - フィールド
 
-    private let baseURL: URL
+    private let settings: AppSettings
     private let session: URLSession
 
     // MARK: - 初期化
 
-    init(baseURL: URL = defaultBaseURL) {
-        self.baseURL = baseURL
+    init(settings: AppSettings) {
+        self.settings = settings
 
         let config = URLSessionConfiguration.default
         config.timeoutIntervalForRequest = 15
@@ -31,7 +26,8 @@ final class CCAPIClient {
 
     /// 指定エンドポイントへ GET し、JSON を `T` にデコードして返す
     func fetch<T: Decodable>(_ endpoint: CCAPIEndpoint, as type: T.Type = T.self) async throws -> T {
-        guard let url = URL(string: endpoint.path, relativeTo: baseURL) else {
+        guard let baseURL = settings.baseURL,
+              let url = URL(string: endpoint.path, relativeTo: baseURL) else {
             throw CCAPIError.invalidURL
         }
 
