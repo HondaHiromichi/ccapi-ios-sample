@@ -22,11 +22,20 @@ struct ThumbnailGridView: View {
             LazyVGrid(columns: columns, spacing: 6) {
                 ForEach(fileURLs, id: \.self) { fileURL in
                     if let fileName = URL(string: fileURL)?.lastPathComponent {
-                        ThumbnailCell(
-                            storage: storage,
-                            directory: directory,
-                            fileName: fileName
-                        )
+                        NavigationLink {
+                            ImageDetailView(
+                                storage: storage,
+                                directory: directory,
+                                fileName: fileName
+                            )
+                        } label: {
+                            ThumbnailCell(
+                                storage: storage,
+                                directory: directory,
+                                fileName: fileName
+                            )
+                        }
+                        .buttonStyle(.plain)
                     }
                 }
             }
