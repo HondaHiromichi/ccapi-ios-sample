@@ -12,13 +12,17 @@ import Observation
 ///   HTTP 応答有無で接続状態を決める (`NWPathMonitor` の経路有無だけではカメラのスリープや
 ///   SSID 切断を検知できないため)
 /// - 成功 -> `connected`, 失敗 1 回 -> `unstable`, 連続失敗 -> `disconnected`
-/// - `NWPathMonitor` は経路の全喪失を即時に `disconnected` 反映する補助として併用する
+/// - 切断中は指数バックオフ (2 -> 4 -> 8 -> 16 秒) でチェック間隔を広げて再接続を試み,
+///   カメラ復帰時に自動で `connected` へ戻す (無駄なリクエスト連打を避ける)
+/// - `NWPathMonitor` は経路の全喪失を即時に `disconnected` 反映し, 復帰時は即時再チェックする
 @Observable
 final class ConnectionMonitor {
     // MARK: - 定数
 
-    /// 健全性チェックの間隔
-    private let pollInterval: Duration = .seconds(5)
+    /// 接続中の定常チェック間隔
+    private let healthyInterval: Duration = .seconds(5)
+    /// 切断時の再接続バックオフ (2 -> 4 -> 8 -> 16 秒, 以降は 16 秒で頭打ち)
+    private let backoffSchedule: [Duration] = [.seconds(2), .seconds(4), .seconds(8), .seconds(16)]
     /// チェック 1 回あたりのタイムアウト (秒)
     private let checkTimeout: TimeInterval = 4
     /// `disconnected` と判定するまでの連続失敗回数
@@ -73,10 +77,18 @@ final class ConnectionMonitor {
     private func startPolling() {
         pollingTask = Task { [weak self] in
             while !Task.isCancelled {
-                await self?.checkOnce()
-                try? await Task.sleep(for: self?.pollInterval ?? .seconds(5))
+                guard let self else { return }
+                await self.checkOnce()
+                try? await Task.sleep(for: self.nextDelay())
             }
         }
+    }
+
+    /// 次回チェックまでの待機時間。接続中は定常間隔, 失敗中は指数バックオフ
+    private func nextDelay() -> Duration {
+        guard consecutiveFailures > 0 else { return healthyInterval }
+        let index = min(consecutiveFailures - 1, backoffSchedule.count - 1)
+        return backoffSchedule[index]
     }
 
     /// カメラへ 1 回だけ軽量リクエストを投げ, 応答で接続状態を更新する
