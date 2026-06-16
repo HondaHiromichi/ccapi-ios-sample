@@ -33,6 +33,15 @@ enum CCAPIEndpoint {
         page: Int? = nil
     )
 
+    /// ディレクトリ配下のコンテンツ数・総ページ数取得 (`kind=number`)
+    /// 例: `GET /ccapi/ver100/contents/sd/101MSDCF?type=jpeg&kind=number`
+    /// 1 ページ最大 100 件のため、全件取得には総ページ数を先に得る必要がある
+    case directoryContentsNumber(
+        storage: String,
+        directory: String,
+        type: ContentType? = nil
+    )
+
     /// 個別ファイルの取得 (本体・サムネイル・表示用・情報など)
     /// 例: `GET /ccapi/ver100/contents/sd/100__TSB/IMG_0001.JPG?kind=thumbnail`
     case fileContent(
@@ -68,6 +77,16 @@ enum CCAPIEndpoint {
             if query.isEmpty {
                 return base
             }
+            var components = URLComponents()
+            components.queryItems = query
+            return base + (components.percentEncodedQuery.map { "?\($0)" } ?? "")
+        case .directoryContentsNumber(let storage, let directory, let type):
+            var query: [URLQueryItem] = []
+            if let type {
+                query.append(URLQueryItem(name: "type", value: type.rawValue))
+            }
+            query.append(URLQueryItem(name: "kind", value: "number"))
+            let base = "/ccapi/\(CCAPIVersion.v100.rawValue)/contents/\(storage)/\(directory)"
             var components = URLComponents()
             components.queryItems = query
             return base + (components.percentEncodedQuery.map { "?\($0)" } ?? "")

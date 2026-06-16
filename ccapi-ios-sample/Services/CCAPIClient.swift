@@ -36,6 +36,29 @@ final class CCAPIClient {
         }
     }
 
+    /// ディレクトリ配下の全ファイル URL を取得して結合する。
+    /// CCAPI は 1 ページ最大 100 件で返すため、`kind=number` で総ページ数を得てから
+    /// 全ページを順次取得する (1 ページ目のみだと 101 件以上のフォルダで新写真が欠落する)
+    func fetchAllDirectoryFileURLs(
+        storage: String,
+        directory: String,
+        type: CCAPIEndpoint.ContentType? = nil
+    ) async throws -> [String] {
+        let info: DirectoryContentsNumber = try await fetch(
+            .directoryContentsNumber(storage: storage, directory: directory, type: type)
+        )
+        guard info.pageNumber > 0 else { return [] }
+
+        var fileURLs: [String] = []
+        for page in 1...info.pageNumber {
+            let list: ContentURLList = try await fetch(
+                .directoryContents(storage: storage, directory: directory, type: type, page: page)
+            )
+            fileURLs.append(contentsOf: list.url)
+        }
+        return fileURLs
+    }
+
     /// 指定エンドポイントへ GET し、生の `Data` を返す
     /// 画像 (`image/jpeg`) や動画など非 JSON のレスポンスを取得する用途に使う
     func fetchData(_ endpoint: CCAPIEndpoint) async throws -> Data {

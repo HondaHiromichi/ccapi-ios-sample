@@ -65,7 +65,10 @@ struct ThumbnailGridView: View {
             .padding(6)
         }
         .refreshable {
-            await reload()
+            // .refreshable のタスクはインジケータ消滅時等にキャンセルされ得る。
+            // 全ページ取得は複数リクエストで時間がかかるため、非構造化タスクに切り離して
+            // 途中キャンセルで一覧更新が失われるのを防ぐ (スピナーは .value 待ちで維持)
+            await Task { await reload() }.value
         }
         .navigationTitle(directory)
         .navigationBarTitleDisplayMode(.inline)
@@ -111,15 +114,11 @@ struct ThumbnailGridView: View {
         errorMessage = nil
 
         do {
-            let response: ContentURLList = try await client.fetch(
-                .directoryContents(
-                    storage: storage,
-                    directory: directory,
-                    type: .jpeg,
-                    page: nil
-                )
+            fileURLs = try await client.fetchAllDirectoryFileURLs(
+                storage: storage,
+                directory: directory,
+                type: .jpeg
             )
-            fileURLs = response.url
             refreshNonce += 1
         } catch {
             // .refreshable / Task のキャンセルは無視 (ユーザー操作で正常)

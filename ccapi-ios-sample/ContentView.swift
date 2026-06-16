@@ -316,18 +316,15 @@ struct ContentView: View {
             )
             let directoryNames = storageContent.lastPathComponents
 
-            // 各ディレクトリの JPEG ファイル一覧を順次取得
+            // 各ディレクトリの JPEG ファイル一覧を全ページ分順次取得
             var listings: [DirectoryListing] = []
             for directory in directoryNames {
-                let files: ContentURLList = try await client.fetch(
-                    .directoryContents(
-                        storage: "sd",
-                        directory: directory,
-                        type: .jpeg,
-                        page: nil
-                    )
+                let fileURLs = try await client.fetchAllDirectoryFileURLs(
+                    storage: "sd",
+                    directory: directory,
+                    type: .jpeg
                 )
-                listings.append(DirectoryListing(name: directory, fileURLs: files.url))
+                listings.append(DirectoryListing(name: directory, fileURLs: fileURLs))
             }
             directoryListings = listings
         } catch {
