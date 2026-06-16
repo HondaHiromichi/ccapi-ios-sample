@@ -42,7 +42,8 @@ struct ThumbnailGridView: View {
             }
 
             LazyVGrid(columns: columns, spacing: 6) {
-                ForEach(fileURLs, id: \.self) { fileURL in
+                // CCAPI は古い順 (新写真が末尾) で返すため, 逆順にして最新を先頭 (左上) に表示する
+                ForEach(fileURLs.reversed(), id: \.self) { fileURL in
                     if let fileName = URL(string: fileURL)?.lastPathComponent {
                         NavigationLink {
                             ImageDetailView(
