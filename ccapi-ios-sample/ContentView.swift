@@ -16,6 +16,7 @@ struct ContentView: View {
     // MARK: - 状態
 
     @Environment(AppSettings.self) private var settings
+    @Environment(ConnectionMonitor.self) private var connectionMonitor
     @Environment(\.ccapiClient) private var client
 
     @State private var deviceInfo: DeviceInformation?
@@ -41,7 +42,9 @@ struct ContentView: View {
     // MARK: - 本体
 
     var body: some View {
-        NavigationStack {
+        // body で state を読むことで, ツールバー内バッジの @Observable 追従を確実にする
+        let connectionState = connectionMonitor.state
+        return NavigationStack {
             ScrollView {
                 VStack(spacing: 16) {
                     Text("CCAPI 接続テスト")
@@ -77,6 +80,9 @@ struct ContentView: View {
                 .frame(maxWidth: .infinity, alignment: .top)
             }
             .toolbar {
+                ToolbarItem(placement: .topBarLeading) {
+                    ConnectionStatusBadge(state: connectionState)
+                }
                 ToolbarItem(placement: .topBarTrailing) {
                     NavigationLink {
                         SettingsView()
@@ -346,9 +352,11 @@ struct ContentView: View {
 #Preview("iPad Pro 11-inch") {
     ContentView()
         .environment(AppSettings())
+        .environment(ConnectionMonitor(settings: AppSettings()))
 }
 
 #Preview("iPhone 17") {
     ContentView()
         .environment(AppSettings())
+        .environment(ConnectionMonitor(settings: AppSettings()))
 }

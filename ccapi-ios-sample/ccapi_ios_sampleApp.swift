@@ -20,12 +20,16 @@ struct ccapi_ios_sampleApp: App {
     /// サムネイル取得をシリアル化・キャッシュする共有ローダー
     private let thumbnailLoader = ThumbnailLoader()
 
+    /// カメラへの到達性を監視し接続状態を公開する共有モニタ
+    private let connectionMonitor: ConnectionMonitor
+
     // MARK: - 初期化
 
     init() {
         let settings = AppSettings()
         _settings = State(initialValue: settings)
         self.client = CCAPIClient(settings: settings)
+        self.connectionMonitor = ConnectionMonitor(settings: settings)
     }
 
     // MARK: - シーン
@@ -34,6 +38,7 @@ struct ccapi_ios_sampleApp: App {
         WindowGroup {
             ContentView()
                 .environment(settings)
+                .environment(connectionMonitor)
                 .environment(\.ccapiClient, client)
                 .environment(\.thumbnailLoader, thumbnailLoader)
         }
