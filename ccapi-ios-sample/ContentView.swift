@@ -17,6 +17,7 @@ struct ContentView: View {
 
     @Environment(AppSettings.self) private var settings
     @Environment(ConnectionMonitor.self) private var connectionMonitor
+    @Environment(EventPoller.self) private var eventPoller
     @Environment(\.ccapiClient) private var client
 
     @State private var deviceInfo: DeviceInformation?
@@ -53,6 +54,7 @@ struct ContentView: View {
                         .frame(maxWidth: .infinity, alignment: .leading)
 
                     placeholderOrError
+                    eventCard
                     deviceInfoCard
                     batteryCard
                     storageCard
@@ -148,6 +150,42 @@ struct ContentView: View {
         }
     }
 
+    // MARK: - サブビュー (撮影イベントカード)
+
+    @ViewBuilder
+    private var eventCard: some View {
+        if !eventPoller.addedContents.isEmpty {
+            let fileNames = eventPoller.addedContents.compactMap { URL(string: $0)?.lastPathComponent }
+            let recentLimit = 3
+            card(title: "撮影イベント検知") {
+                // 新着合計 / 最新 (表示中) / 他 (未表示) を 1 行に横並びで示す
+                HStack(spacing: 18) {
+                    eventStat("新着合計", fileNames.count)
+                    // 「最新」「他」は未表示分が存在する (4 件以上の) ときのみ表示する
+                    // (3 件以下は全件表示なので内訳不要)
+                    if fileNames.count > recentLimit {
+                        eventStat("最新", recentLimit)
+                        eventStat("他", fileNames.count - recentLimit)
+                    }
+                    Spacer()
+                }
+
+                VStack(alignment: .leading, spacing: 3) {
+                    ForEach(Array(fileNames.suffix(recentLimit).reversed().enumerated()), id: \.offset) { _, name in
+                        HStack(spacing: 6) {
+                            Image(systemName: "camera.fill")
+                                .font(.caption)
+                                .foregroundStyle(.green)
+                            Text(name)
+                                .font(.callout.monospaced())
+                            Spacer()
+                        }
+                    }
+                }
+            }
+        }
+    }
+
     // MARK: - サブビュー (ストレージカード)
 
     @ViewBuilder
@@ -220,6 +258,17 @@ struct ContentView: View {
         .padding()
         .background(.gray.opacity(0.1))
         .clipShape(RoundedRectangle(cornerRadius: 12))
+    }
+
+    /// 撮影イベントカード用の「ラベル + 件数」を横並びにする小要素
+    private func eventStat(_ label: String, _ count: Int) -> some View {
+        HStack(spacing: 4) {
+            Text(label)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            Text("\(count) 件")
+                .font(.callout.monospaced().bold())
+        }
     }
 
     private func row(_ label: String, _ value: String) -> some View {
@@ -350,13 +399,17 @@ struct ContentView: View {
 }
 
 #Preview("iPad Pro 11-inch") {
-    ContentView()
-        .environment(AppSettings())
-        .environment(ConnectionMonitor(settings: AppSettings()))
+    let settings = AppSettings()
+    return ContentView()
+        .environment(settings)
+        .environment(ConnectionMonitor(settings: settings))
+        .environment(EventPoller(client: CCAPIClient(settings: settings)))
 }
 
 #Preview("iPhone 17") {
-    ContentView()
-        .environment(AppSettings())
-        .environment(ConnectionMonitor(settings: AppSettings()))
+    let settings = AppSettings()
+    return ContentView()
+        .environment(settings)
+        .environment(ConnectionMonitor(settings: settings))
+        .environment(EventPoller(client: CCAPIClient(settings: settings)))
 }

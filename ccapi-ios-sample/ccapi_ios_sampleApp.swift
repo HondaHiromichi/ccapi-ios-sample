@@ -23,13 +23,18 @@ struct ccapi_ios_sampleApp: App {
     /// カメラへの到達性を監視し接続状態を公開する共有モニタ
     private let connectionMonitor: ConnectionMonitor
 
+    /// 撮影イベントをポーリングして新規画像を検知する共有ポーラー
+    private let eventPoller: EventPoller
+
     // MARK: - 初期化
 
     init() {
         let settings = AppSettings()
         _settings = State(initialValue: settings)
-        self.client = CCAPIClient(settings: settings)
+        let client = CCAPIClient(settings: settings)
+        self.client = client
         self.connectionMonitor = ConnectionMonitor(settings: settings)
+        self.eventPoller = EventPoller(client: client)
     }
 
     // MARK: - シーン
@@ -39,6 +44,7 @@ struct ccapi_ios_sampleApp: App {
             ContentView()
                 .environment(settings)
                 .environment(connectionMonitor)
+                .environment(eventPoller)
                 .environment(\.ccapiClient, client)
                 .environment(\.thumbnailLoader, thumbnailLoader)
         }
