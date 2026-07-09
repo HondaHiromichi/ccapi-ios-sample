@@ -400,16 +400,22 @@ struct ContentView: View {
 
 #Preview("iPad Pro 11-inch") {
     let settings = AppSettings()
+    let client = CCAPIClient(settings: settings)
     return ContentView()
         .environment(settings)
         .environment(ConnectionMonitor(settings: settings))
-        .environment(EventPoller(client: CCAPIClient(settings: settings)))
+        .environment(EventPoller(client: client))
+        .environment(\.ccapiClient, client)
+        .environment(\.imageCache, ImageCache(client: client))
 }
 
 #Preview("iPhone 17") {
     let settings = AppSettings()
+    let client = CCAPIClient(settings: settings)
     return ContentView()
         .environment(settings)
         .environment(ConnectionMonitor(settings: settings))
-        .environment(EventPoller(client: CCAPIClient(settings: settings)))
+        .environment(EventPoller(client: client))
+        .environment(\.ccapiClient, client)
+        .environment(\.imageCache, ImageCache(client: client))
 }

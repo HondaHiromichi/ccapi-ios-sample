@@ -6,8 +6,8 @@ import Observation
 /// `event/polling?continue=off` を一定間隔でポーリングし, 新規撮影 (`addedcontents`) を検知する。
 /// R100 は SSE 非対応のためポーリング方式。検知した URL を累積して `@Observable` で公開する。
 ///
-/// 注意: 検知結果は現状メモリ上に累積するだけ。永続キュー化と状態管理 (pending/downloading/
-/// done/failed) は 3-4 (転送キュー永続化, SwiftData) で置き換える。
+/// 用途は **メイン画面の新着情報表示のみ**。ダウンロードはグリッド画面への遷移時にまとめて行う
+/// 設計のため, ここでは自動ダウンロードは行わない。
 @Observable
 final class EventPoller {
     // MARK: - プロパティ

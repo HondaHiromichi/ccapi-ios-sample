@@ -2,8 +2,9 @@ import SwiftUI
 
 // MARK: - サムネイルグリッド画面
 
-/// 指定ディレクトリ配下のファイル URL リストを受け取り、サムネイル画像をグリッド表示する。
-/// 右上のリロードボタン / プルダウンで一覧の再取得と全セルの再ロードが可能。
+/// 指定ディレクトリ配下のファイルをグリッド表示する。
+/// 各セルが独立して画像キャッシュ (メモリ/ディスク/ダウンロード) を解決し, 取得でき次第表示する。
+/// ダウンロードは `ImageCache` 経由で行われ, 同時数は共有ゲートの上限に従う。
 struct ThumbnailGridView: View {
     // MARK: - 入力
 
@@ -15,8 +16,6 @@ struct ThumbnailGridView: View {
     @Environment(\.ccapiClient) private var client
 
     @State private var fileURLs: [String]
-    /// セル id に付与して、リロード時に全セルを新規 View として再生成するためのカウンタ
-    @State private var refreshNonce = 0
     @State private var isRefreshing = false
     @State private var errorMessage: String?
 
@@ -30,7 +29,6 @@ struct ThumbnailGridView: View {
 
     // MARK: - レイアウト
 
-    /// 1 列あたりの最小幅 (pt)。大きくすると 1 行のセル数が減り、同時ロード対象も減る
     private let columns = [GridItem(.adaptive(minimum: 180), spacing: 6)]
 
     // MARK: - 本体
@@ -42,7 +40,7 @@ struct ThumbnailGridView: View {
             }
 
             LazyVGrid(columns: columns, spacing: 6) {
-                // CCAPI は古い順 (新写真が末尾) で返すため, 逆順にして最新を先頭 (左上) に表示する
+                // 新しい写真 (ファイル番号が大きい) を先頭に表示する
                 ForEach(fileURLs.reversed(), id: \.self) { fileURL in
                     if let fileName = URL(string: fileURL)?.lastPathComponent {
                         NavigationLink {
@@ -59,17 +57,13 @@ struct ThumbnailGridView: View {
                             )
                         }
                         .buttonStyle(.plain)
-                        .id("\(fileURL)#\(refreshNonce)")
                     }
                 }
             }
             .padding(6)
         }
         .refreshable {
-            // .refreshable のタスクはインジケータ消滅時等にキャンセルされ得る。
-            // 全ページ取得は複数リクエストで時間がかかるため、非構造化タスクに切り離して
-            // 途中キャンセルで一覧更新が失われるのを防ぐ (スピナーは .value 待ちで維持)
-            await Task { await reload() }.value
+            await reload()
         }
         .navigationTitle(directory)
         .navigationBarTitleDisplayMode(.inline)
@@ -109,6 +103,7 @@ struct ThumbnailGridView: View {
 
     // MARK: - Private メソッド
 
+    /// ファイル一覧を再取得する (画像自体は各セルがキャッシュ経由で取得する)
     private func reload() async {
         isRefreshing = true
         defer { isRefreshing = false }
@@ -120,7 +115,6 @@ struct ThumbnailGridView: View {
                 directory: directory,
                 type: .jpeg
             )
-            refreshNonce += 1
         } catch {
             // .refreshable / Task のキャンセルは無視 (ユーザー操作で正常)
             if isCancellation(error) { return }
@@ -142,7 +136,7 @@ struct ThumbnailGridView: View {
 
 // MARK: - サムネイルセル
 
-/// 1 ファイル分のサムネイル取得・表示セル。出現時に共有 `ThumbnailLoader` 経由でロード
+/// 1 ファイル分のセル。出現時に `ImageCache` 経由で画像を取得し, 取得でき次第表示する。
 struct ThumbnailCell: View {
     // MARK: - 入力
 
@@ -152,8 +146,7 @@ struct ThumbnailCell: View {
 
     // MARK: - 環境・状態
 
-    @Environment(\.ccapiClient) private var client
-    @Environment(\.thumbnailLoader) private var loader
+    @Environment(\.imageCache) private var imageCache
 
     @State private var image: UIImage?
     @State private var failed = false
@@ -173,8 +166,6 @@ struct ThumbnailCell: View {
             }
     }
 
-    // MARK: - サブビュー
-
     @ViewBuilder
     private var overlayContent: some View {
         if let image {
@@ -190,35 +181,20 @@ struct ThumbnailCell: View {
         }
     }
 
-    // MARK: - Private メソッド
-
     private func load() async {
-        guard image == nil, !failed else { return }
+        guard image == nil else { return }
+        failed = false
         do {
-            image = try await loader.loadThumbnail(
-                client: client,
-                storage: storage,
-                directory: directory,
-                file: fileName
-            )
+            // グリッドはサムネ (約 7KB) で高速表示する
+            if let loaded = try await imageCache.image(storage: storage, directory: directory, fileName: fileName, kind: .thumbnail) {
+                image = loaded
+            } else {
+                failed = true
+            }
         } catch is CancellationError {
-            // View 破棄等によるキャンセル時は失敗扱いしない (新規 View で再ロードされる想定)
-            return
+            // セル再利用等のキャンセルは失敗扱いしない (再出現時に再ロード)
         } catch {
             failed = true
         }
-    }
-}
-
-#Preview {
-    let settings = AppSettings()
-    return NavigationStack {
-        ThumbnailGridView(
-            storage: "sd",
-            directory: "100__TSB",
-            fileURLs: []
-        )
-        .environment(settings)
-        .environment(\.ccapiClient, CCAPIClient(settings: settings))
     }
 }

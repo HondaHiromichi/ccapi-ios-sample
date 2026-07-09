@@ -7,6 +7,9 @@ struct SettingsView: View {
     // MARK: - 状態
 
     @Environment(AppSettings.self) private var settings
+    @Environment(\.imageCache) private var imageCache
+
+    @State private var didClearCache = false
 
     // MARK: - 本体
 
@@ -36,6 +39,23 @@ struct SettingsView: View {
                     Label("AP モード (\(AppSettings.defaultHost):\(AppSettings.defaultPort))",
                           systemImage: "antenna.radiowaves.left.and.right")
                 }
+            }
+
+            Section {
+                Button(role: .destructive) {
+                    Task {
+                        await imageCache.clearAll()
+                        didClearCache = true
+                    }
+                } label: {
+                    Label("画像キャッシュをクリア", systemImage: "trash")
+                }
+            } header: {
+                Text("メンテナンス")
+            } footer: {
+                Text(didClearCache
+                     ? "キャッシュを削除しました。"
+                     : "ダウンロード済みのサムネイル/オリジナル画像をすべて削除します。")
             }
         }
         .navigationTitle("設定")

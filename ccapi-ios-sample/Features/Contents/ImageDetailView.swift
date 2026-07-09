@@ -2,7 +2,8 @@ import SwiftUI
 
 // MARK: - 画像詳細画面
 
-/// 単一画像の表示画面。画像本体 (`display`) とメタデータ (`info`) を取得して表示する
+/// 単一画像の詳細画面。画像は `ImageCache` 経由で表示し (未取得ならダウンロード),
+/// メタデータ (`info`) はカメラから取得して表示する。
 struct ImageDetailView: View {
     // MARK: - 入力
 
@@ -13,11 +14,11 @@ struct ImageDetailView: View {
     // MARK: - 環境・状態
 
     @Environment(\.ccapiClient) private var client
+    @Environment(\.imageCache) private var imageCache
 
     @State private var image: UIImage?
+    @State private var imageFailed = false
     @State private var metadata: ImageMetadata?
-    @State private var imageErrorMessage: String?
-    @State private var isLoadingImage = false
 
     // MARK: - 本体
 
@@ -35,7 +36,10 @@ struct ImageDetailView: View {
         .navigationTitle(fileName)
         .navigationBarTitleDisplayMode(.inline)
         .task {
-            await load()
+            await loadImage()
+        }
+        .task {
+            await loadMetadata()
         }
     }
 
@@ -48,12 +52,12 @@ struct ImageDetailView: View {
                 .resizable()
                 .scaledToFit()
                 .clipShape(RoundedRectangle(cornerRadius: 12))
-        } else if let message = imageErrorMessage {
+        } else if imageFailed {
             VStack(spacing: 8) {
                 Image(systemName: "exclamationmark.triangle")
                     .font(.largeTitle)
                     .foregroundStyle(.red)
-                Text(message)
+                Text("画像を取得できませんでした")
                     .foregroundStyle(.red)
                     .multilineTextAlignment(.center)
             }
@@ -154,41 +158,19 @@ struct ImageDetailView: View {
 
     // MARK: - Private メソッド
 
-    private func load() async {
-        async let imageTask: () = loadImage()
-        async let metadataTask: () = loadMetadata()
-        _ = await (imageTask, metadataTask)
-    }
-
-    /// 画像を取得。`display` で失敗したら `main` にフォールバック
     private func loadImage() async {
-        isLoadingImage = true
-        defer { isLoadingImage = false }
-
-        if let img = await fetchImage(kind: .display) {
-            image = img
-            return
-        }
-        if let img = await fetchImage(kind: .main) {
-            image = img
-            return
-        }
-        imageErrorMessage = "画像を取得できませんでした"
-    }
-
-    private func fetchImage(kind: CCAPIEndpoint.ContentKind) async -> UIImage? {
+        imageFailed = false
         do {
-            let data = try await client.fetchData(
-                .fileContent(
-                    storage: storage,
-                    directory: directory,
-                    file: fileName,
-                    kind: kind
-                )
-            )
-            return UIImage(data: data)
+            // 詳細はオリジナル (main) を取得・キャッシュする (アップロードにも使える)
+            if let loaded = try await imageCache.image(storage: storage, directory: directory, fileName: fileName, kind: .main) {
+                image = loaded
+            } else {
+                imageFailed = true
+            }
+        } catch is CancellationError {
+            // 画面離脱等のキャンセルは失敗扱いしない
         } catch {
-            return nil
+            imageFailed = true
         }
     }
 
@@ -206,18 +188,5 @@ struct ImageDetailView: View {
         } catch {
             // メタデータ取得失敗は無視 (取得できなければ非表示)
         }
-    }
-}
-
-#Preview {
-    let settings = AppSettings()
-    return NavigationStack {
-        ImageDetailView(
-            storage: "sd",
-            directory: "100__TSB",
-            fileName: "IMG_0001.JPG"
-        )
-        .environment(settings)
-        .environment(\.ccapiClient, CCAPIClient(settings: settings))
     }
 }

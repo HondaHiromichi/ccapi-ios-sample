@@ -17,13 +17,13 @@ struct ccapi_ios_sampleApp: App {
     /// アプリ全体で共有する CCAPI クライアント (内部の URLSession もアプリ内 1 つに集約)
     private let client: CCAPIClient
 
-    /// サムネイル取得をシリアル化・キャッシュする共有ローダー
-    private let thumbnailLoader = ThumbnailLoader()
+    /// 画像キャッシュ (メモリ/ディスク, ダウンロード付き)
+    private let imageCache: ImageCache
 
     /// カメラへの到達性を監視し接続状態を公開する共有モニタ
     private let connectionMonitor: ConnectionMonitor
 
-    /// 撮影イベントをポーリングして新規画像を検知する共有ポーラー
+    /// 撮影イベントをポーリングして新規画像を検知する共有ポーラー (メイン画面の新着情報用)
     private let eventPoller: EventPoller
 
     // MARK: - 初期化
@@ -33,6 +33,8 @@ struct ccapi_ios_sampleApp: App {
         _settings = State(initialValue: settings)
         let client = CCAPIClient(settings: settings)
         self.client = client
+
+        self.imageCache = ImageCache(client: client)
         self.connectionMonitor = ConnectionMonitor(settings: settings)
         self.eventPoller = EventPoller(client: client)
     }
@@ -46,7 +48,7 @@ struct ccapi_ios_sampleApp: App {
                 .environment(connectionMonitor)
                 .environment(eventPoller)
                 .environment(\.ccapiClient, client)
-                .environment(\.thumbnailLoader, thumbnailLoader)
+                .environment(\.imageCache, imageCache)
         }
     }
 }
