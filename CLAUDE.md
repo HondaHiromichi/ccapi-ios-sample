@@ -69,11 +69,14 @@ config.httpMaximumConnectionsPerHost = 2
 - 開始前に GET すると `503 Live view not started` が返るため、起動シーケンスをクライアント側で管理する
 - 別途 `/ccapi/ver100/shooting/liveview/rtp` (RTP モード) も存在。MVP では `flip` を採用予定
 
-### リトライ戦略
+### リトライ戦略 (`CCAPIClient` に集約, 実装済み)
 
-- HTTP 5xx -> 指数バックオフで最大 3 回再試行
-- HTTP 4xx -> ユーザー通知 (カメラ側の状態異常の可能性)
-- タイムアウト -> 接続状態を再評価してから再試行
+- 全 CCAPI 呼び出しは `CCAPIClient.fetchData` の共通リトライを通る
+- HTTP 5xx / タイムアウト等の一過性エラー -> 指数バックオフ (0.5s / 1s / 2s) で最大 3 回再試行
+- HTTP 4xx / デコード不能 / URL 不正 -> 再試行せず即 throw (呼び出し側でユーザー通知。カメラ側の状態異常の可能性)
+- キャンセル (`URLError.cancelled` / `CancellationError`) -> 再試行せず伝播
+- 「タイムアウト時に接続状態を再評価してから再試行」はバックオフ再試行で代替 (`ConnectionMonitor` との密結合を避けた簡略化)
+- `ConnectionMonitor` のヘルスチェックは対象外 (速い単発プローブを維持するため)
 
 ### 画像サイズ階層化
 
@@ -143,11 +146,11 @@ ccapi-ios-sample/
   - [x] コンテンツ一覧取得・表示 (フォルダ・ファイル数)
   - [x] 画像サムネイルグリッド UI (`ThumbnailGridView`)
   - [x] 画像詳細画面 (`ImageDetailView`: オリジナル画像 + メタデータ)
-- [~] Phase 3: 安定化 (進行中)
+- [x] Phase 3: 安定化 (完了)
   - [x] 接続監視 + 自動再接続 (`ConnectionMonitor`, 到達性ベース, 指数バックオフ)
   - [x] イベントポーリング (`EventPoller`, 新着検知)
   - [x] 画像取り込みを **オンデマンド + 二段キャッシュ** に確定 (`ImageCache`)。当初の「自動取り込み + SwiftData 転送キュー」は不採用
-  - [ ] リトライ戦略の全体適用 (5xx / 4xx / タイムアウトの方針統一)
+  - [x] リトライ戦略の全体適用 (`CCAPIClient` に集約: 5xx/タイムアウト→指数バックオフ最大3回 / 4xx→即通知 / キャンセル→伝播)
 - [ ] Phase 4: 機能拡張 (画像オリジナルのアップロード / リモート撮影 / カメラ設定 / ライブビュー / 診断 / 複数カメラ)
 
 ## Phase 1 検証結果 (R100 firmware 1.1.0)
