@@ -16,7 +16,6 @@ import SwiftUI
 actor ImageCache {
     private let client: CCAPIClient
     private let memory = NSCache<NSString, UIImage>()
-    private let maxRetries = 3
 
     init(client: CCAPIClient) {
         self.client = client
@@ -45,28 +44,22 @@ actor ImageCache {
             return image
         }
 
-        // 3. ダウンロード (一時的失敗はバックオフ再試行)
-        for attempt in 0..<maxRetries {
-            try Task.checkCancellation()
-            do {
-                let data = try await client.fetchData(
-                    .fileContent(storage: storage, directory: directory, file: fileName, kind: kind)
-                )
-                try? Self.save(data: data, to: fileURL)
-                guard let image = UIImage(data: data) else { return nil }
-                memory.setObject(image, forKey: key)
-                return image
-            } catch {
-                if Self.isCancellation(error) {
-                    throw CancellationError()
-                }
-                if attempt == maxRetries - 1 {
-                    return nil
-                }
-                try? await Task.sleep(for: .milliseconds(500 * (attempt + 1)))
+        // 3. ダウンロード (再試行は CCAPIClient に集約済み)
+        do {
+            let data = try await client.fetchData(
+                .fileContent(storage: storage, directory: directory, file: fileName, kind: kind)
+            )
+            try? Self.save(data: data, to: fileURL)
+            guard let image = UIImage(data: data) else { return nil }
+            memory.setObject(image, forKey: key)
+            return image
+        } catch {
+            // キャンセルは失敗扱いしない (呼び出し元セルが再ロードに任せる)
+            if Self.isCancellation(error) {
+                throw CancellationError()
             }
+            return nil
         }
-        return nil
     }
 
     // MARK: - キャッシュ操作

@@ -9,6 +9,8 @@ final class CCAPIClient {
 
     private let settings: AppSettings
     private let session: URLSession
+    /// 一過性エラー時の最大再試行回数 (初回を除く)
+    private let maxRetries = 3
 
     // MARK: - 初期化
 
@@ -60,13 +62,50 @@ final class CCAPIClient {
     }
 
     /// 指定エンドポイントへ GET し、生の `Data` を返す
-    /// 画像 (`image/jpeg`) や動画など非 JSON のレスポンスを取得する用途に使う
+    /// 画像 (`image/jpeg`) や動画など非 JSON のレスポンスを取得する用途に使う。
+    ///
+    /// リトライ方針 (アプリ全体で共通):
+    /// - HTTP 5xx / タイムアウト等の一過性エラー -> 指数バックオフで最大 `maxRetries` 回再試行
+    /// - HTTP 4xx / デコード不能 / URL 不正 -> 再試行せず即 throw (呼び出し側でユーザー通知)
+    /// - キャンセル (`URLError.cancelled` / `CancellationError`) -> 再試行せず伝播
     func fetchData(_ endpoint: CCAPIEndpoint) async throws -> Data {
         guard let baseURL = settings.baseURL,
               let url = URL(string: endpoint.path, relativeTo: baseURL) else {
             throw CCAPIError.invalidURL
         }
 
+        var attempt = 0
+        while true {
+            try Task.checkCancellation()
+            do {
+                let data = try await performRequest(url)
+                // リトライ診断ログ (リトライ発生時のみ出力。正常時は無音)
+                if attempt > 0 {
+                    print("[CCAPIClient] recovered after \(attempt) retry(ies): \(endpoint.path)")
+                }
+                return data
+            } catch {
+                guard Self.isRetryable(error), attempt < maxRetries else {
+                    // リトライ診断ログ (リトライ発生時のみ出力。正常時は無音)
+                    if attempt > 0 {
+                        print("[CCAPIClient] gave up after \(attempt) retry(ies): \(endpoint.path) — \(error.localizedDescription)")
+                    }
+                    throw error
+                }
+                attempt += 1
+                // 指数バックオフ: 0.5s -> 1s -> 2s
+                let delayMs = 500 * (1 << (attempt - 1))
+                // リトライ診断ログ (リトライ発生時のみ出力。正常時は無音)
+                print("[CCAPIClient] retry \(attempt)/\(maxRetries) in \(delayMs)ms: \(endpoint.path) — \(error.localizedDescription)")
+                try? await Task.sleep(for: .milliseconds(delayMs))
+            }
+        }
+    }
+
+    // MARK: - Private メソッド
+
+    /// 1 回分の GET リクエスト。非 2xx は `httpStatus`, 通信例外は `transport` に正規化する
+    private func performRequest(_ url: URL) async throws -> Data {
         let data: Data
         let response: URLResponse
         do {
@@ -80,6 +119,24 @@ final class CCAPIClient {
         }
 
         return data
+    }
+
+    /// 一過性エラー (再試行する価値がある) かどうかを判定する
+    private static func isRetryable(_ error: Error) -> Bool {
+        switch error {
+        case let CCAPIError.httpStatus(code, _):
+            // 5xx はカメラ側の一過性異常 (busy 503 等) -> 再試行 / 4xx は再試行しない
+            return (500..<600).contains(code)
+        case let CCAPIError.transport(underlying):
+            if underlying is CancellationError { return false }
+            if let urlError = underlying as? URLError, urlError.code == .cancelled { return false }
+            // タイムアウト・接続断など通信系は一過性の可能性が高い -> 再試行
+            return true
+        case CCAPIError.decoding, CCAPIError.invalidURL:
+            return false
+        default:
+            return false
+        }
     }
 }
 
