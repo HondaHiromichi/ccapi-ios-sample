@@ -7,5 +7,7 @@
 		<key>NSAllowsLocalNetworking</key>
 		<true/>
 	</dict>
+	<key>NSLocalNetworkUsageDescription</key>
+	<string>カメラ (Canon CCAPI) と通信するためにローカルネットワークへのアクセスを使用します。</string>
 </dict>
 </plist>
